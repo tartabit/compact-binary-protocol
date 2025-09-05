@@ -36,10 +36,12 @@ The protocol is centered around commands, each packet has a command field that d
     - T (Telemetry): Device → Server (periodic)
     - M+ (Motion Start): Device → Server (event)
     - M- (Motion Stop): Device → Server (event)
+    - U- (Update Status): Device → Server (asynchronous status updates for update requests)
 - Cloud to device commands
     - A (Acknowledge): Server → Device (for any packet that requires ack)
     - C (Configuration Request): Server → Device (request device to send its current configuration)
     - W (Write Configuration): Server → Device (update device configuration)
+    - U+ (Update Request): Server → Device (request the device to perform a component update)
 
 When you implement the protocol, you can add other commands as needed and implement on the IoT Bridge to facilitate parsing and handling.  It is recommended to maintain the format of these standard commands.
 
@@ -128,6 +130,40 @@ Body, in order:
 
 Semantics:
 - Instructs the device to update its runtime configuration. Upon applying the changes, the device responds with a Configuration (C) packet echoing the new values and using the same Transaction ID as the W packet.
+
+### Packet: Update Request (Command "U+") — Server → Device
+
+Direction: Server → Device
+
+Body, in order (all fields are VarString):
+- component: VarString
+  - A user-defined component identifier to update, e.g., "firmware", "software", "app", etc.
+- url: VarString
+  - A URL that the device should use to download the firmware/software package.
+- arguments: VarString
+  - A free-form string with parameters or flags required by the device to process the update (implementation-specific).
+
+Semantics:
+- Requests the device to start an update process for the indicated component using the provided url and arguments.
+- Devices should initiate the update asynchronously and report progress via Update Status (U-) packets using the same Transaction ID.
+- The server must acknowledge the U+ packet (A) as usual.
+
+### Packet: Update Status (Command "U-") — Device → Server
+
+Direction: Device → Server
+
+Body, in order (all fields are VarString):
+- component: VarString
+  - Same component identifier as in the corresponding Update Request.
+- status: VarString
+  - One of: "waiting", "started", "success", "failed".
+- result: VarString
+  - Optional additional details; empty string on success. On failure, may include a reason (e.g., "Simulated failure").
+
+Semantics:
+- Sent asynchronously by the device to inform the server of update progress and completion.
+- Multiple U- packets may be sent for the same Transaction ID as the update progresses (e.g., "started" then "success" or "failed").
+- Must be acknowledged (A) by the server.
 
 ## Data encodings
 Below are the specific encodings for the different special data types.
@@ -310,6 +346,16 @@ W body (Server → Device):
 - [..+4] New Publish Interval (u32 be)
 - [..+4] New Reading Interval (u32 be)
 
+U+ body (Server → Device):
+- VarString: component
+- VarString: url
+- VarString: arguments
+
+U- body (Device → Server):
+- VarString: component
+- VarString: status ("waiting"|"started"|"success"|"failed")
+- VarString: result (details; may be empty)
+
 ### Encoding Notes and Edge Cases
 
 - Endianness: All multi-byte integers and float32 are big-endian.
@@ -348,7 +394,7 @@ Ack (A) packet from server:
 ### Example Field Values
 
 - Version: 0x01
-- Commands: "P+" (0x50 0x2B), "T\0" (0x54 0x00), "C\0" (0x43 0x00), "W\0" (0x57 0x00), "A\0" (0x41 0x00)
+- Commands: "P+" (0x50 0x2B), "T\0" (0x54 0x00), "C\0" (0x43 0x00), "W\0" (0x57 0x00), "A\0" (0x41 0x00), "U+" (0x55 0x2B), "U-" (0x55 0x2D)
 - Transaction ID: 0..65535 (wraps)
 - GNSS floats: 4-byte IEEE-754 big-endian
 - SensorMulti units: temperature ×10 (int16), humidity ×10 (int16)

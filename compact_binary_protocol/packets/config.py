@@ -15,6 +15,15 @@ class ConfigPacket(Packet):
         data = address_with_length + struct.pack('>II', self.reporting_interval, self.reading_interval)
         return header + data
 
+    @staticmethod
+    def decode(imei: str, transaction_id: int, data: bytes):
+        from ..decoders import DataReader
+        reader = DataReader(data)
+        server_address = reader.read_var_string()
+        reporting_interval = reader.read_int4()
+        reading_interval = reader.read_int4()
+        return ConfigPacket(imei, server_address, reporting_interval, reading_interval, transaction_id)
+
     def print(self, packet_type):
         packet_bytes = self.to_bytes()
         print("v" * 50)

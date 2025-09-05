@@ -20,11 +20,12 @@ from .sensor_data import (
     SensorDataNull,
     SensorDataSteps,
 )
-from .packets import Packet, TelemetryPacket, ConfigPacket, PowerOnPacket, MotionStartPacket, MotionStopPacket
+from .packets import Packet, TelemetryPacket, ConfigPacket, PowerOnPacket, MotionStartPacket, MotionStopPacket, UpdateRequestPacket, UpdateStatusPacket
 
 __all__ = [
     'encode_var_string',
     'PacketDecoder', 'DataReader',
     'LocationData', 'SensorDataBasic', 'SensorDataMulti', 'SensorDataNull', 'SensorDataSteps',
     'Packet', 'TelemetryPacket', 'ConfigPacket', 'PowerOnPacket', 'MotionStartPacket', 'MotionStopPacket',
+    'UpdateRequestPacket', 'UpdateStatusPacket',
 ]
