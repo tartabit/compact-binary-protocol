@@ -11,7 +11,7 @@ class DataSteps:
 
     def to_bytes(self):
         payload = struct.pack('>BBi', self.battery, self.rssi, self.steps)
-        header = struct.pack('>BBB', self.sensor_type, self.sensor_version, len(payload))
+        header = struct.pack('>BBH', self.sensor_type, self.sensor_version, len(payload))
         return header + payload
 
     def describe(self):

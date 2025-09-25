@@ -40,7 +40,7 @@ class DataKv:
             payload += encode_var_string(k)
             payload += encode_var_string(v)
         # Prepend SensorData header (type, version, length)
-        header = struct.pack('>BBB', self.sensor_type, self.sensor_version, len(payload))
+        header = struct.pack('>BBH', self.sensor_type, self.sensor_version, len(payload))
         return header + payload
 
     def describe(self) -> str:

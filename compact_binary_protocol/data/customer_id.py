@@ -38,7 +38,7 @@ class DataCustomerId:
 
     def to_bytes(self):
         payload = struct.pack('>B', len(self._raw)) + self._raw
-        header = struct.pack('>BBB', self.sensor_type, self.sensor_version, len(payload))
+        header = struct.pack('>BBH', self.sensor_type, self.sensor_version, len(payload))
         return header + payload
 
     def describe(self):

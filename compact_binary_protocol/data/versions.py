@@ -11,7 +11,7 @@ class DataVersions:
 
     def to_bytes(self):
         payload = encode_var_string(self.software_version) + encode_var_string(self.modem_version)
-        header = struct.pack('>BBB', self.sensor_type, self.sensor_version, len(payload))
+        header = struct.pack('>BBH', self.sensor_type, self.sensor_version, len(payload))
         return header + payload
 
     def describe(self):

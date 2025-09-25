@@ -13,25 +13,25 @@ All multi-byte numeric fields are big-endian. All strings are ASCII unless state
 This protocol is independent of the specific modem AT commands used in the sample application. Only the UDP payload format is specified here.
 
 ## Common Packet Header
-Every packet starts with a fixed header followed by a common timestamp:
+Every packet starts with a fixed header that now includes a common timestamp:
 - Version: 1 byte
     - Current value: 1
 - Command: 2 bytes
-    - Two ASCII characters. If the logical command is a single character, the second byte is a null ("\0"). Examples: "T\0", "C\0", "P+", "A\0".
+    - Two ASCII characters. If the logical command is a single character, the second byte is a null ("\0"). Examples: "T\0", "C\0", "A\0", "U+", "U-".
 - Transaction ID: 2 bytes (uint16, big-endian)
     - Sequence number for matching requests and acknowledgments. Wraps modulo 65536.
 - Device ID: variable (packed BCD), prefixed by a 1-byte length
     - Encoding: decimal digits packed two per byte, low nibble = first digit, high nibble = second digit. If the number of digits is odd (e.g., 15), prepend a leading 0 nibble to make an even number of nibbles (example below).
-    - Example: "358419511056392" -> 03 58 41 95 11 05 63 92.
+    - Example: "358419511056392" -> 03 58 41 95 11 05 63 92 (8 bytes of packed BCD).
 - Timestamp: 4 bytes (uint32, big-endian)
     - Unix time (seconds since epoch) indicating when the packet was generated on the device.
 
-Following the header+timestamp is the Command-specific body (which may be empty).
+Following the header (which includes the timestamp) is the Command-specific body (which may be empty).
 
 ## Commands Overview
 The protocol is centered around commands, each packet has a command field that describes the intent for each message.
 - Device to Cloud commands
-    - T (Telemetry): Device → Server (periodic and events; includes an Event field for motion start/stop). On startup, devices send a Telemetry packet carrying identification via SensorDataCustomerId along with Versions and NetworkInfo. Configuration is also sent as Telemetry containing a DataKv item.
+    - T (Telemetry): Device → Server for periodic or event-driven data. On startup, devices send a Telemetry packet carrying identification via DataCustomerId along with DataVersions and DataNetworkInfo. Configuration is also sent as Telemetry containing a DataKv item.
     - U- (Update Status): Device → Server (asynchronous status updates for update requests)
 - Cloud to device commands
     - A (Acknowledge): Server → Device (for any packet that requires ack)
@@ -65,21 +65,18 @@ Semantics:
 - Must be acknowledged (A) by the server.
 
 ### Packet: Telemetry (Command "T")
-The default way to send time-series event data.  This packet type can accomodate different sensor configurations through the SensorData structure.
+The default way to send time-series data. This packet carries a collection of typed data items (Data*), allowing flexible payloads.
 
 Body, in order (v2):
-- Timestamp: 4 bytes (uint32)
-    - Unix time (seconds since epoch).
-- Event: 1 byte (uint8)
-    - 0 = normal telemetry
-    - 1 = motion start
-    - 2 = motion stop
-- SensorDataCount: 1 byte (uint8)
-    - Number of SensorData structures that follow.
-- SensorData: variable, one or more SensorData items (e.g., SensorMultiData v1). Location is no longer embedded here; if needed, send as its own SensorData item.
+- DataCount: 1 byte (uint8)
+    - Number of Data items that follow.
+- Data items: variable, one or more items (e.g., DataMulti v1). Location is not embedded implicitly; if needed, include a DataLocation item.
+
+Note:
+- The packet timestamp is part of the common header and is not present in the Telemetry body.
 
 Semantics:
-- Sent periodically based on the configured Publish Interval and also for motion events using the Event field.
+- Sent periodically based on the configured Publish Interval and also for device-specific events as needed (e.g., motion start/stop indicated by dedicated data items or command conventions).
 - Must be acknowledged (A) by the server.
 
 ### Packet: Acknowledge (Command "A")
@@ -165,7 +162,7 @@ Some bodies use variable-length ASCII strings, they are encoded as:
 
 Note: If a string exceeds 255 bytes, it must be truncated to 255.
 
-### LocationData Encoding
+### DataLocation Encoding
 
 LocationData is a type-tagged structure embedded within Telemetry packets.
 
@@ -191,42 +188,52 @@ When Type = 3 (WIFI):
     - SSID: VarString
     - RSSI: 1 byte (int8)
 
-### SensorData Encoding
+### Data Items Encoding
 
-The Telemetry and Motion packets carry one or more SensorData items. Each item begins with a generic header that allows for versioning and variable-length payloads.
+Telemetry carries one or more typed Data items. Each item begins with a generic header that allows for versioning and variable-length payloads.
 
-Common SensorData header:
-- sensor_type: 1 byte (uint8)
-- sensor_version: 1 byte (uint8)
-- sensor_length: 1 byte (uint8) — number of bytes in the payload that follows
+Common Data header:
+- type: 1 byte (uint8)
+- version: 1 byte (uint8)
+- length: 2 bytes (uint16, big-endian) — number of bytes in the payload that follows
 
-#### SensorMultiData (type=2, version=1)
+Type code assignments (see data/constants.py):
+- Null = 0
+- Kv = 1
+- Location = 10
+- CustomerId = 11
+- Versions = 20
+- NetworkInfo = 21
+- Multi = 31
+- Steps = 32
+
+#### DataMulti (type=31, version=1)
 Payload:
 - battery: 1 byte (uint8) — percentage
 - rssi: 1 byte (uint8)
-- first_record_time: 4 bytes (uint32) — Unix time of the first sample in the series
-- record_interval: 2 bytes (uint16) — seconds between samples
+- first_timestamp: 4 bytes (uint32) — Unix time of the first sample in the series
+- interval: 2 bytes (uint16) — seconds between samples
 - record_count: 1 byte (uint8)
 - records: record_count repetitions of:
     - temperature: 2 bytes (int16) — tenths of degrees Celsius (value = temperature_C × 10)
     - humidity: 2 bytes (int16) — tenths of percent RH (value = humidity_% × 10)
 
-#### NullSensorData (type=0, version=0)
+#### DataNull (type=0, version=0)
 Payload: (empty)
-- Used in Motion Start (M+) to indicate no sensor values are attached.
+- Often used to indicate an event without additional metrics.
 
-#### MotionSensorData (type=3, version=1)
+#### DataSteps (type=32, version=1)
 Payload:
 - battery: 1 byte (uint8) — percentage
 - rssi: 1 byte (uint8)
 - steps: 4 bytes (int32)
 
-#### SensorCustomerId (type=11, version=1)
+#### DataCustomerId (type=11, version=1)
 Payload:
 - VarBytes: customer_id
   - 1 byte length (uint8) followed by raw bytes obtained by hex-decoding an even-length customer code string. May be empty. Max 255 bytes.
 
-#### DataKv (type=22, version=1)
+#### DataKv (type=1, version=1)
 Generic key/value pairs carried within Telemetry to transport configuration-like data.
 Payload:
 - PairCount: 1 byte (uint8)
@@ -245,18 +252,13 @@ Below are the steps to define your own encoding.
 Notes:
 - You can extend the Telemetry packet with additional data formats by defining your own type/version that has dynamic collections of data fields available.
 
-### Motion Events via Telemetry
-
-Motion start/stop are now represented using the Telemetry (T) packet's Event field:
-- Event=1 (motion start) with a NullSensorData item if no metrics are attached.
-- Event=2 (motion stop) with a MotionSensorData item (battery, rssi, steps) when applicable.
 
 ## State and Flow
 
 On startup:
 1. Initialize and connect to network; create/activate UDP socket to the configured server.
-2. Send a Telemetry (T) packet with a new Transaction ID that includes SensorCustomerId, SensorVersions, and SensorNetworkInfo; wait for Acknowledgment (A).
-3. Send Configuration (C) with current server address and intervals; wait for Acknowledgment (A).
+2. Send a Telemetry (T) packet with a new Transaction ID that includes DataCustomerId, DataVersions, and DataNetworkInfo; wait for Acknowledgment (A).
+3. Send Telemetry (T) containing a DataKv item with current server address and intervals; wait for Acknowledgment (A).
 
 Operational loop:
 1. At each Publish Interval:
@@ -278,23 +280,22 @@ Acknowledgment handling:
 
 ### Binary Layout Summaries
 
-Header (13 bytes):
-- [0] Version (u8)
-- [1..2] Command (2×ASCII)
-- [3..4] Transaction ID (u16 be)
-- [5..12] IMEI (8×packed BCD)
+Header (typical 18 bytes when IMEI is 8 packed-BCD bytes):
+- Version (u8)
+- Command (2×ASCII)
+- Transaction ID (u16 be)
+- IMEI length (u8) followed by IMEI (packed BCD, typically 8 bytes for a 15-digit IMEI)
+- Timestamp (u32 be)
 
 P+ body: (deprecated)
-- Replaced by Telemetry with SensorDataCustomerId, SensorDataVersions, SensorDataNetworkInfo.
+- Replaced by Telemetry with DataCustomerId, DataVersions, DataNetworkInfo.
 
 C body (Device → Server):
 - (no longer used; device sends configuration as Telemetry with a DataKv item)
 
 T body (v2):
-- [..+4] Timestamp (u32 be)
-- [..+1] Event (u8)
-- [..+1] SensorDataCount (u8) — number of SensorData items
-- SensorData item(s) (per type/version)
+- DataCount (u8) — number of Data items
+- Data item(s) (per type/version)
 
 A body:
 - empty
@@ -350,7 +351,7 @@ Ack (A) packet from server:
 - Keep IMEI exactly 15 ASCII bytes.
 - Match Transaction ID in Acks and in responses to server-initiated commands.
 - Respect VarString length limits (≤255).
-- For Telemetry, ensure LocationData and SensorData follow the specified type/version contracts.
+- For Telemetry, ensure DataLocation and Data items follow the specified type/version contracts.
 - Validate and bound record_count to fit within typical UDP MTUs (e.g., < 1200 bytes payload for safety).
 
 ### Example Field Values

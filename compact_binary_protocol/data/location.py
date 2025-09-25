@@ -54,7 +54,7 @@ class DataLocation:
 
     def to_bytes(self):
         payload = self._payload_bytes()
-        header = struct.pack('>BBB', self.sensor_type, self.sensor_version, len(payload))
+        header = struct.pack('>BBH', self.sensor_type, self.sensor_version, len(payload))
         return header + payload
 
     def describe(self):

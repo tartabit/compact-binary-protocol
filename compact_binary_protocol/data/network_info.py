@@ -13,7 +13,7 @@ class DataNetworkInfo:
 
     def to_bytes(self):
         payload = encode_var_string(self.mcc) + encode_var_string(self.mnc) + encode_var_string(self.rat)
-        header = struct.pack('>BBB', self.sensor_type, self.sensor_version, len(payload))
+        header = struct.pack('>BBH', self.sensor_type, self.sensor_version, len(payload))
         return header + payload
 
     def describe(self):

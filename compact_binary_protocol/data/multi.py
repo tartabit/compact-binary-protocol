@@ -13,6 +13,9 @@ class DataMulti:
         self.battery = int(battery)
         self.rssi = int(rssi)
 
+        if len(self.records) > 255:
+            self.records = self.records[:255]
+
     def to_bytes(self):
         payload_header = struct.pack(
             '>BBIHB',
@@ -28,7 +31,7 @@ class DataMulti:
             hum = int(round(float(rec['humidity']) * 10))
             records_bytes += struct.pack('>hh', temp, hum)
         payload = payload_header + bytes(records_bytes)
-        header = struct.pack('>BBB', self.sensor_type, self.sensor_version, len(payload))
+        header = struct.pack('>BBH', self.sensor_type, self.sensor_version, len(payload))
         return header + payload
 
     def describe(self):

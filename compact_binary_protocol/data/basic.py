@@ -12,7 +12,7 @@ class DataBasic:
 
     def to_bytes(self):
         payload = struct.pack('>HBB', int(self.temperature * 10), self.battery, self.rssi)
-        header = struct.pack('>BBB', self.sensor_type, self.sensor_version, len(payload))
+        header = struct.pack('>BBH', self.sensor_type, self.sensor_version, len(payload))
         return header + payload
 
     def describe(self):
