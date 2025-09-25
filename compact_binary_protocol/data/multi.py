@@ -1,8 +1,9 @@
 import struct
+from .constants import TYPE_MULTI
 
-class SensorDataMulti:
+class DataMulti:
     def __init__(self, battery, rssi, first_timestamp, interval, records):
-        self.sensor_type = int(2)
+        self.sensor_type = int(TYPE_MULTI)
         self.sensor_version = int(1)
         self.battery = int(battery)
         self.rssi = int(rssi)
@@ -33,7 +34,7 @@ class SensorDataMulti:
     def describe(self):
         rec_cnt = len(self.records) if self.records is not None else 0
         return (
-            f"SensorMulti(type={self.sensor_type}, ver={self.sensor_version}, "
+            f"Multi(type={self.sensor_type}, ver={self.sensor_version}, "
             f"batt={self.battery}%, rssi={self.rssi}, first_ts={self.first_timestamp}, "
             f"interval={self.interval}s, records={rec_cnt})"
         )

@@ -34,20 +34,19 @@ class PacketDecoder:
     def decode_packet_header(hex_str):
         """
         Decode the packet header from a hex string.
-        Header format: <ver><cmd1><cmd2><txnId><imei(8 bytes)>
-        Returns tuple: (version, command, transaction_id, remainder_bytes) or (None, None, None) on error.
+        Header format: <ver><cmd1><cmd2><txnId><imeiLen><imeiBCD...><timestamp u32>
+        Returns tuple: (version, command, transaction_id, timestamp, remainder_bytes) or (None, None, None) on error.
         """
         try:
             data = bytes.fromhex(hex_str)
-            version = data[0] if len(data) > 0 else None
-            if len(data) > 2:
-                cmd1 = chr(data[1])
-                cmd2 = chr(data[2])
-                command = cmd1 + cmd2
-            else:
-                command = None
-            txn_id = int.from_bytes(data[3:5], byteorder='big') if len(data) > 4 else None
-            remainder = data[5:]
-            return (version, command, txn_id, remainder)
+            if len(data) < 5:
+                return (None, None, None)
+            version = data[0]
+            cmd1 = chr(data[1]) if len(data) > 1 else '\0'
+            cmd2 = chr(data[2]) if len(data) > 2 else '\0'
+            command = cmd1 + cmd2
+            txn_id = int.from_bytes(data[3:5], byteorder='big')
+            data = data[6:]
+            return (version, command, txn_id, data)
         except Exception:
             return (None, None, None)

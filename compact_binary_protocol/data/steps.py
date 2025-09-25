@@ -1,9 +1,10 @@
 import struct
+from .constants import TYPE_STEPS
 
-class SensorDataSteps:
-    def __init__(self, battery: int, rssi: int, steps: int, sensor_version: int = 1):
-        self.sensor_type = 3
-        self.sensor_version = int(sensor_version)
+class DataSteps:
+    def __init__(self, battery: int, rssi: int, steps: int):
+        self.sensor_type = TYPE_STEPS
+        self.sensor_version = 1
         self.battery = int(battery)
         self.rssi = int(rssi)
         self.steps = int(steps)
@@ -15,6 +16,6 @@ class SensorDataSteps:
 
     def describe(self):
         return (
-            f"SensorSteps(type={self.sensor_type}, ver={self.sensor_version}, "
+            f"Steps(type={self.sensor_type}, ver={self.sensor_version}, "
             f"batt={self.battery}%, rssi={self.rssi}, steps={self.steps})"
         )

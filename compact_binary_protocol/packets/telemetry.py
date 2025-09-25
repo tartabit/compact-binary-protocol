@@ -2,42 +2,51 @@ import struct
 from .base import Packet
 
 class TelemetryPacket(Packet):
-    def __init__(self, imei, timestamp, transaction_id, location_data, sensor_data):
-        super().__init__('T', imei, transaction_id, 1)
-        self.timestamp = int(timestamp)
-        self.location_data = location_data
-        # normalize sensor_data to a list
-        if sensor_data is None:
-            self.sensors = []
-        elif isinstance(sensor_data, (list, tuple)):
-            self.sensors = list(sensor_data)
+    """
+    Telemetry packet with an event field to cover periodic telemetry and motion events.
+    Body (v2):
+      - event (u8)
+      - data_count (u8)
+      - data items...
+    Note: Timestamp has moved to the base packet header (u32)
+    """
+    def __init__(self, imei, timestamp, transaction_id, event, data=None):
+        """
+        Compat constructor:
+        - New style: TelemetryPacket(imei, timestamp, txn_id, data, event=0)
+        - Legacy style: TelemetryPacket(imei, timestamp, txn_id, command, data)
+          where command is one of 'T', 'M+', 'M-'. Event will be mapped accordingly.
+        """
+        super().__init__(event, imei, transaction_id, 1, timestamp=timestamp)
+        # normalize data to a list
+        if data is None:
+            self.data = []
+        elif isinstance(data, (list, tuple)):
+            self.data = list(data)
         else:
-            self.sensors = [sensor_data]
+            self.data = [data]
 
     def to_bytes(self):
         header = self.build_header()
-        loc_bytes = self.location_data.to_bytes()
-        sensor_count_val = len(self.sensors)
-        sensor_count = struct.pack('>B', sensor_count_val)
-        sensor_bytes = b''.join(sd.to_bytes() for sd in self.sensors)
-        data = struct.pack('>I', int(self.timestamp)) + loc_bytes + sensor_count + sensor_bytes
-        return header + data
+        data_count_val = len(self.data)
+        body = struct.pack('>B', data_count_val)
+        body += b''.join(sd.to_bytes() for sd in self.data)
+        return header + body
 
     def print(self, packet_type):
         packet_bytes = self.to_bytes()
         print("v" * 50)
         print(f"  Type: {packet_type}")
         print(f"  Transaction ID: {self.transaction_id}")
-        print(f"  Location: {self.location_data.describe()}")
         descs = []
-        for sd in self.sensors:
+        for sd in self.data:
             try:
                 descs.append(sd.describe())
             except Exception:
                 descs.append(str(sd))
-        sensor_str = '[' + ', '.join(descs) + ']'
-        print(f"  Sensor count: {len(self.sensors)}")
-        print(f"  Sensors: {sensor_str}")
+        data_str = '[' + ', '.join(descs) + ']'
+        print(f"  data count: {len(self.data)}")
+        print(f"  datas: {data_str}")
         print(f"  Packet: {packet_bytes.hex()}")
         print(f"  Packet size: {len(packet_bytes)} bytes")
         print("^" * 50)

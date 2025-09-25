@@ -13,84 +13,73 @@ All multi-byte numeric fields are big-endian. All strings are ASCII unless state
 This protocol is independent of the specific modem AT commands used in the sample application. Only the UDP payload format is specified here.
 
 ## Common Packet Header
-Every packet starts with a fixed header:
+Every packet starts with a fixed header followed by a common timestamp:
 - Version: 1 byte
     - Current value: 1
 - Command: 2 bytes
     - Two ASCII characters. If the logical command is a single character, the second byte is a null ("\0"). Examples: "T\0", "C\0", "P+", "A\0".
 - Transaction ID: 2 bytes (uint16, big-endian)
     - Sequence number for matching requests and acknowledgments. Wraps modulo 65536.
-- IMEI: 8 bytes (packed BCD)
+- Device ID: variable (packed BCD), prefixed by a 1-byte length
     - Encoding: decimal digits packed two per byte, low nibble = first digit, high nibble = second digit. If the number of digits is odd (e.g., 15), prepend a leading 0 nibble to make an even number of nibbles (example below).
     - Example: "358419511056392" -> 03 58 41 95 11 05 63 92.
+- Timestamp: 4 bytes (uint32, big-endian)
+    - Unix time (seconds since epoch) indicating when the packet was generated on the device.
 
-Header total: 1 + 2 + 2 + 8 = 13 bytes.
-
-Following the header is the Command-specific body (which may be empty).
+Following the header+timestamp is the Command-specific body (which may be empty).
 
 ## Commands Overview
 The protocol is centered around commands, each packet has a command field that describes the intent for each message.
 - Device to Cloud commands
-    - P+ (Power On): Device → Server
-    - C (Configuration): Device → Server (in response to request, or proactively on startup)
-    - T (Telemetry): Device → Server (periodic)
-    - M+ (Motion Start): Device → Server (event)
-    - M- (Motion Stop): Device → Server (event)
+    - T (Telemetry): Device → Server (periodic and events; includes an Event field for motion start/stop). On startup, devices send a Telemetry packet carrying identification via SensorDataCustomerId along with Versions and NetworkInfo. Configuration is also sent as Telemetry containing a DataKv item.
     - U- (Update Status): Device → Server (asynchronous status updates for update requests)
 - Cloud to device commands
     - A (Acknowledge): Server → Device (for any packet that requires ack)
-    - C (Configuration Request): Server → Device (request device to send its current configuration)
+    - C (Configuration Request): Server → Device (request device to send its current configuration as a Telemetry packet containing DataKv)
     - W (Write Configuration): Server → Device (update device configuration)
     - U+ (Update Request): Server → Device (request the device to perform a component update)
 
 When you implement the protocol, you can add other commands as needed and implement on the IoT Bridge to facilitate parsing and handling.  It is recommended to maintain the format of these standard commands.
 
-### Packet: Power On (Command "P+")
-Send when the device powers on and connects to the network.
+### Packet: Power On (Command "P+") — Deprecated
+Replaced by a standard Telemetry (T) packet on startup. Devices now send identification via SensorDataCustomerId together with SensorDataVersions and SensorDataNetworkInfo within a Telemetry packet and then follow with a Configuration (C) packet.
 
-Body, in order:
-- Customer ID: VarBytes
-    - Encoding: 1-byte length N (uint8) followed by N raw bytes.
-    - The bytes are obtained by hex-decoding the provided code string (even-length hex characters). Example: code "00000000" -> length=4, bytes 00 00 00 00.
-- Software Version: VarString
-- Modem Firmware Version: VarString
-- MCC: VarString
-- MNC: VarString
-- RAT: VarString (e.g., "LTE-M", "NB-IoT")
-
-Semantics:
-- Sent once at application startup to announce identity and environment.
-- Must be acknowledged (A) by the server with the same Transaction ID.
+Legacy implementations using P+ should migrate to Telemetry with these SensorData items.
 
 ### Packet: Configuration (Command "C")
-Send after the `Power On` command or if the server requests the configuration to be sent.
+Direction: Server → Device (request only)
 
-Body, in order:
-- Server Address: VarString
-    - Format: "hostname:port" (e.g., "udp-eu.tartabit.com:10106").
-- Publish Interval: 4 bytes (uint32)
-    - Seconds between telemetry publishes.
-- Reading Interval: 4 bytes (uint32)
-    - Seconds between individual sensor readings collected into a telemetry bundle.
+- Device responds by sending a Telemetry (T) packet that contains a DataKv sensor item with the current configuration key/value pairs.
+- On startup, devices also proactively send configuration via Telemetry with DataKv.
+
+Notes:
+- All keys and values are strings in the DataKv item. Common keys used by the sample clients:
+  - "server" → e.g., "udp-eu.tartabit.com:10106"
+  - "interval" → publish interval in seconds (string)
+  - "readings" → reading interval in seconds (string)
+- Implementations may add other keys as needed.
 
 Semantics:
-- Sent initially after Power On.
-- Also sent in response to a server Configuration Request (C) or after applying a Write Configuration (W).
+- Device sends Telemetry with DataKv initially after startup Telemetry.
+- Device also sends Telemetry with DataKv in response to a server Configuration Request (C) or after applying a Write Configuration (W).
 - Must be acknowledged (A) by the server.
 
 ### Packet: Telemetry (Command "T")
 The default way to send time-series event data.  This packet type can accomodate different sensor configurations through the SensorData structure.
 
-Body, in order:
+Body, in order (v2):
 - Timestamp: 4 bytes (uint32)
     - Unix time (seconds since epoch).
-- LocationData: variable, see below
+- Event: 1 byte (uint8)
+    - 0 = normal telemetry
+    - 1 = motion start
+    - 2 = motion stop
 - SensorDataCount: 1 byte (uint8)
-    - Number of SensorData structures that follow; currently 1 in the reference app.
-- SensorData: variable, see below (the sample uses SensorMultiData v1)
+    - Number of SensorData structures that follow.
+- SensorData: variable, one or more SensorData items (e.g., SensorMultiData v1). Location is no longer embedded here; if needed, send as its own SensorData item.
 
 Semantics:
-- Sent periodically based on the configured Publish Interval.
+- Sent periodically based on the configured Publish Interval and also for motion events using the Event field.
 - Must be acknowledged (A) by the server.
 
 ### Packet: Acknowledge (Command "A")
@@ -105,7 +94,7 @@ Semantics:
 - The Transaction ID in the header must match the Transaction ID of the packet being acknowledged.
 
 Device behavior:
-- For each sent packet that expects an ack (P+, C, T, M+, M-), the device waits up to a timeout (default 30 seconds in the sample) for an A with the same Transaction ID. If not received, it treats it as a timeout.
+- For each sent packet that expects an ack (P+, C, T), the device waits up to a timeout (default 30 seconds in the sample) for an A with the same Transaction ID. If not received, it treats it as a timeout.
 - ACKs may arrive out of order relative to packet sends; devices must match ACKs strictly by Transaction ID (not by sequence of arrival).
 
 ### Packet: Configuration Request (Command "C") — Server → Device
@@ -123,10 +112,11 @@ Semantics:
 
 Direction: Server → Device
 
-Body, in order:
-- New Server Address: VarString ("hostname:port")
-- New Publish Interval: 4 bytes (uint32)
-- New Reading Interval: 4 bytes (uint32)
+Body (key/value pairs):
+- PairCount: 1 byte (uint8)
+- Then repeat PairCount times:
+  - Key: VarString (ASCII)
+  - Value: VarString (ASCII)
 
 Semantics:
 - Instructs the device to update its runtime configuration. Upon applying the changes, the device responds with a Configuration (C) packet echoing the new values and using the same Transaction ID as the W packet.
@@ -231,6 +221,21 @@ Payload:
 - rssi: 1 byte (uint8)
 - steps: 4 bytes (int32)
 
+#### SensorCustomerId (type=11, version=1)
+Payload:
+- VarBytes: customer_id
+  - 1 byte length (uint8) followed by raw bytes obtained by hex-decoding an even-length customer code string. May be empty. Max 255 bytes.
+
+#### DataKv (type=22, version=1)
+Generic key/value pairs carried within Telemetry to transport configuration-like data.
+Payload:
+- PairCount: 1 byte (uint8)
+- Then repeat PairCount times:
+  - Key: VarString (ASCII)
+  - Value: VarString (ASCII)
+Notes:
+- All keys and values are strings on the wire.
+
 #### <Custom Encoding>
 Below are the steps to define your own encoding.
 1. Assign a type code and start at version 1.
@@ -240,41 +245,17 @@ Below are the steps to define your own encoding.
 Notes:
 - You can extend the Telemetry packet with additional data formats by defining your own type/version that has dynamic collections of data fields available.
 
-### Packet: Motion Start (Command "M+")
-Send to indicate the start of a motion window.
+### Motion Events via Telemetry
 
-Body, in order:
-- Timestamp: 4 bytes (uint32)
-    - Unix time (seconds since epoch).
-- LocationData: variable, see below
-- SensorDataCount: 1 byte (uint8)
-    - Number of SensorData structures that follow; currently 1.
-- SensorData: NullSensorData (type=0, version=0, length=0)
-
-Semantics:
-- Used to mark the beginning of a motion activity period. Must be acknowledged (A).
-
-### Packet: Motion Stop (Command "M-")
-Send to indicate the end of a motion window.
-
-Body, in order:
-- Timestamp: 4 bytes (uint32)
-    - Unix time (seconds since epoch).
-- LocationData: variable, see below
-- SensorDataCount: 1 byte (uint8)
-    - Number of SensorData structures that follow; currently 1.
-- SensorData: MotionSensorData (type=3, version=1)
-    - Payload: battery (u8), rssi (u8), steps (i32)
-
-Semantics:
-- Used to mark the end of a motion activity period and report summary stats.
-- Must be acknowledged (A).
+Motion start/stop are now represented using the Telemetry (T) packet's Event field:
+- Event=1 (motion start) with a NullSensorData item if no metrics are attached.
+- Event=2 (motion stop) with a MotionSensorData item (battery, rssi, steps) when applicable.
 
 ## State and Flow
 
 On startup:
 1. Initialize and connect to network; create/activate UDP socket to the configured server.
-2. Send Power On (P+) with a new Transaction ID; wait for Acknowledgment (A) with matching Transaction ID.
+2. Send a Telemetry (T) packet with a new Transaction ID that includes SensorCustomerId, SensorVersions, and SensorNetworkInfo; wait for Acknowledgment (A).
 3. Send Configuration (C) with current server address and intervals; wait for Acknowledgment (A).
 
 Operational loop:
@@ -303,23 +284,16 @@ Header (13 bytes):
 - [3..4] Transaction ID (u16 be)
 - [5..12] IMEI (8×packed BCD)
 
-P+ body:
-- VarBytes: Customer ID (1-byte length N, then N bytes)
-- VarString: Software Version
-- VarString: Modem Version
-- VarString: MCC
-- VarString: MNC
-- VarString: RAT
+P+ body: (deprecated)
+- Replaced by Telemetry with SensorDataCustomerId, SensorDataVersions, SensorDataNetworkInfo.
 
 C body (Device → Server):
-- VarString: Server Address
-- [..+4] Publish Interval (u32 be)
-- [..+4] Reading Interval (u32 be)
+- (no longer used; device sends configuration as Telemetry with a DataKv item)
 
-T body:
+T body (v2):
 - [..+4] Timestamp (u32 be)
-- LocationData (per type)
-- [..+1] SensorDataCount (u8) — number of SensorData items (currently 1)
+- [..+1] Event (u8)
+- [..+1] SensorDataCount (u8) — number of SensorData items
 - SensorData item(s) (per type/version)
 
 A body:
@@ -328,23 +302,11 @@ A body:
 C body (Server → Device):
 - empty
 
-M+ body:
-- [..+4] Timestamp (u32 be)
-- LocationData (per type)
-- [..+1] SensorDataCount (u8) — number of SensorData items (1)
-- SensorData: NullSensorData (type=0, ver=0, len=0)
-
-M- body:
-- [..+4] Timestamp (u32 be)
-- LocationData (per type)
-- [..+1] SensorDataCount (u8) — number of SensorData items (1)
-- SensorData: MotionSensorData (type=3, ver=1, len=payload)
-    - payload: battery (u8), rssi (u8), steps (i32)
-
 W body (Server → Device):
-- VarString: New Server Address
-- [..+4] New Publish Interval (u32 be)
-- [..+4] New Reading Interval (u32 be)
+- [..+1] PairCount (u8)
+- Repeated PairCount times:
+  - VarString: Key
+  - VarString: Value
 
 U+ body (Server → Device):
 - VarString: component

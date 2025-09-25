@@ -1,9 +1,11 @@
 import struct
+from .constants import TYPE_BASIC
 
-class SensorDataBasic:
-    def __init__(self, sensor_type, temperature, battery, rssi, sensor_version=1):
-        self.sensor_type = int(sensor_type)
-        self.sensor_version = int(sensor_version)
+
+class DataBasic:
+    def __init__(self, temperature, battery, rssi):
+        self.sensor_type = int(TYPE_BASIC)
+        self.sensor_version = 1
         self.temperature = float(temperature)
         self.battery = int(battery)
         self.rssi = int(rssi)
@@ -14,4 +16,4 @@ class SensorDataBasic:
         return header + payload
 
     def describe(self):
-        return f"SensorBasic(type={self.sensor_type}, ver={self.sensor_version}, temp={self.temperature}°C, batt={self.battery}%, rssi={self.rssi})"
+        return f"Basic(type={self.sensor_type}, ver={self.sensor_version}, temp={self.temperature}°C, batt={self.battery}%, rssi={self.rssi})"

@@ -5,7 +5,7 @@ A small, self-contained Python library that defines the compact binary protocol 
 Features:
 - Encoding helpers
 - Data model classes for location and sensor data
-- Packet classes for telemetry, configuration, power on, motion start/stop
+- Packet classes for telemetry, configuration, power on, update requests/status
 - Decoding helpers for responses and header parsing
 
 All multi-byte values are encoded using big-endian format.
@@ -28,13 +28,18 @@ pip install -e ./compact-binary-protocol
 ## Quick start
 ```python
 from compact_binary_protocol import (
-    LocationData, SensorDataBasic, TelemetryPacket,
+    SensorDataMulti, TelemetryPacket,
 )
 
 imei = "358419511056392"
-loc = LocationData.gnss(52.5200, 13.4050)
-sensor = SensorDataBasic(sensor_type=1, temperature=21.5, battery=95, rssi=30)
-tele = TelemetryPacket(imei=imei, timestamp=1724900000, transaction_id=1, location_data=loc, sensor_data=sensor)
+sensor = SensorDataMulti(
+    battery=95,
+    rssi=30,
+    first_timestamp=1724900000,
+    interval=60,
+    records=[{"temperature": 21.5, "humidity": 40.0}]
+)
+tele = TelemetryPacket(imei=imei, timestamp=1724900000, transaction_id=1, sensor_data=sensor, event=0)
 packet_bytes = tele.to_bytes()
 print(packet_bytes.hex())
 ```
@@ -45,8 +50,8 @@ print(packet_bytes.hex())
 - decoder.PacketDecoder.decode_packet_header(hex_str)
 - decoder.DataReader for reading from bytes
 - data.LocationData (gnss/cell)
-- data.SensorData, data.SensorMultiData, data.NullSensorData, data.MotionSensorData
-- packets.Packet base + TelemetryPacket, ConfigPacket, PowerOnPacket, MotionStartPacket, MotionStopPacket
+- data.SensorData*, data.SensorDataMulti, data.SensorDataNull, data.SensorDataSteps, data.SensorDataVersions, data.SensorDataNetworkInfo
+- packets.Packet base + TelemetryPacket, ConfigPacket, UpdateRequestPacket, UpdateStatusPacket
 
 ## Building
 To build the package, run the following command:
