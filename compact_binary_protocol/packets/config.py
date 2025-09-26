@@ -44,9 +44,9 @@ class ConfigPacket(Packet):
         if len(data) == 0:
             count = 0
         else:
-            # First byte is count
-            count = data[0]
-            reader.position = 1
+            reader.read_u8()
+            reader.read_data_item_header()
+            count = reader.read_u8()
         pairs = []
         for _ in range(count):
             key = reader.read_var_string()

@@ -51,7 +51,7 @@ print(packet_bytes.hex())
 - DataReader for reading from bytes
 - DataLocation (gnss/cell)
 - DataBasic, DataMulti, DataNull, DataSteps, DataVersions, DataNetworkInfo, DataCustomerId, DataKv
-- Packets: Packet (base), TelemetryPacket, ConfigPacket (server→device body decoder), UpdateRequestPacket, UpdateStatusPacket
+- Packets: Packet (base), TelemetryPacket, ConfigPacket (server→device body decoder)
 
 ## Building
 To build the package, run the following command:

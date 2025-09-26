@@ -24,12 +24,11 @@ from .data import (
     DataCustomerId,
     DataKv,
 )
-from .packets import Packet, TelemetryPacket, ConfigPacket, UpdateRequestPacket, UpdateStatusPacket
+from .packets import Packet, TelemetryPacket, ConfigPacket
 
 __all__ = [
     'encode_var_string',
     'PacketDecoder', 'DataReader',
     'DataLocation', 'DataBasic', 'DataMulti', 'DataNull', 'DataSteps', 'DataVersions', 'DataNetworkInfo', 'DataCustomerId', 'DataKv',
     'Packet', 'TelemetryPacket', 'ConfigPacket',
-    'UpdateRequestPacket', 'UpdateStatusPacket',
 ]

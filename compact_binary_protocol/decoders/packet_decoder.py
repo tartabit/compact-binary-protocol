@@ -46,7 +46,7 @@ class PacketDecoder:
             cmd2 = chr(data[2]) if len(data) > 2 else '\0'
             command = cmd1 + cmd2
             txn_id = int.from_bytes(data[3:5], byteorder='big')
-            data = data[6:]
+            data = data[5:]
             return (version, command, txn_id, data)
         except Exception:
             return (None, None, None)

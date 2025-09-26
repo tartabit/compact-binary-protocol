@@ -32,12 +32,10 @@ Following the header (which includes the timestamp) is the Command-specific body
 The protocol is centered around commands, each packet has a command field that describes the intent for each message.
 - Device to Cloud commands
     - T (Telemetry): Device → Server for periodic or event-driven data. On startup, devices send a Telemetry packet carrying identification via DataCustomerId along with DataVersions and DataNetworkInfo. Configuration is also sent as Telemetry containing a DataKv item.
-    - U- (Update Status): Device → Server (asynchronous status updates for update requests)
 - Cloud to device commands
     - A (Acknowledge): Server → Device (for any packet that requires ack)
     - C (Configuration Request): Server → Device (request device to send its current configuration as a Telemetry packet containing DataKv)
     - W (Write Configuration): Server → Device (update device configuration)
-    - U+ (Update Request): Server → Device (request the device to perform a component update)
 
 When you implement the protocol, you can add other commands as needed and implement on the IoT Bridge to facilitate parsing and handling.  It is recommended to maintain the format of these standard commands.
 
@@ -118,39 +116,7 @@ Body (key/value pairs):
 Semantics:
 - Instructs the device to update its runtime configuration. Upon applying the changes, the device responds with a Configuration (C) packet echoing the new values and using the same Transaction ID as the W packet.
 
-### Packet: Update Request (Command "U+") — Server → Device
 
-Direction: Server → Device
-
-Body, in order (all fields are VarString):
-- component: VarString
-  - A user-defined component identifier to update, e.g., "firmware", "software", "app", etc.
-- url: VarString
-  - A URL that the device should use to download the firmware/software package.
-- arguments: VarString
-  - A free-form string with parameters or flags required by the device to process the update (implementation-specific).
-
-Semantics:
-- Requests the device to start an update process for the indicated component using the provided url and arguments.
-- Devices should initiate the update asynchronously and report progress via Update Status (U-) packets using the same Transaction ID.
-- The server must acknowledge the U+ packet (A) as usual.
-
-### Packet: Update Status (Command "U-") — Device → Server
-
-Direction: Device → Server
-
-Body, in order (all fields are VarString):
-- component: VarString
-  - Same component identifier as in the corresponding Update Request.
-- status: VarString
-  - One of: "waiting", "started", "success", "failed".
-- result: VarString
-  - Optional additional details; empty string on success. On failure, may include a reason (e.g., "Simulated failure").
-
-Semantics:
-- Sent asynchronously by the device to inform the server of update progress and completion.
-- Multiple U- packets may be sent for the same Transaction ID as the update progresses (e.g., "started" then "success" or "failed").
-- Must be acknowledged (A) by the server.
 
 ## Data encodings
 Below are the specific encodings for the different special data types.
@@ -309,15 +275,6 @@ W body (Server → Device):
   - VarString: Key
   - VarString: Value
 
-U+ body (Server → Device):
-- VarString: component
-- VarString: url
-- VarString: arguments
-
-U- body (Device → Server):
-- VarString: component
-- VarString: status ("waiting"|"started"|"success"|"failed")
-- VarString: result (details; may be empty)
 
 ### Encoding Notes and Edge Cases
 
