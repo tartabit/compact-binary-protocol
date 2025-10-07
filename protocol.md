@@ -21,8 +21,8 @@ Every packet starts with a fixed header that now includes a common timestamp:
 - Transaction ID: 2 bytes (uint16, big-endian)
     - Sequence number for matching requests and acknowledgments. Wraps modulo 65536.
 - Device ID: variable (packed BCD), prefixed by a 1-byte length
-    - Encoding: decimal digits packed two per byte, low nibble = first digit, high nibble = second digit. If the number of digits is odd (e.g., 15), prepend a leading 0 nibble to make an even number of nibbles (example below).
-    - Example: "358419511056392" -> 03 58 41 95 11 05 63 92 (8 bytes of packed BCD).
+    - Encoding: decimal digits packed two per byte, high nibble = first digit, low nibble = second digit. If the number of digits is odd (e.g., 15), prepend a leading 0 nibble to make an even number of nibbles.
+    - Example: IMEI "358419511056392" would be encoded as 8 packed BCD bytes; the length prefix would therefore be 0x08.
 - Timestamp: 4 bytes (uint32, big-endian)
     - Unix time (seconds since epoch) indicating when the packet was generated on the device.
 
@@ -135,7 +135,6 @@ LocationData is a type-tagged structure embedded within Telemetry packets.
 - Type: 1 byte (uint8)
     - 1 = GNSS
     - 2 = CELL
-    - 3 = WIFI
 
 When Type = 1 (GNSS):
 - Latitude: 4 bytes (float32, IEEE-754, big-endian)
@@ -146,13 +145,7 @@ When Type = 2 (CELL):
 - MNC: VarString
 - LAC: VarString
 - Cell ID: VarString
-- RSSI: 1 byte (uint8)
-
-When Type = 3 (WIFI):
-- Count: 1 byte (uint8)
-- repeats for `count` SSIDs
-    - SSID: VarString
-    - RSSI: 1 byte (int8)
+- RSSI: 1 byte (int8)
 
 ### Data Items Encoding
 
@@ -170,16 +163,16 @@ Type code assignments (see data/constants.py):
 - CustomerId = 11
 - Versions = 20
 - NetworkInfo = 21
-- Multi = 31
-- Steps = 32
+- DeviceStatus = 22
+- Environment = 100
+- Multi = 101
+- Steps = 102
 
-#### DataMulti (type=31, version=1)
+#### DataMulti (type=101, version=1)
 Payload:
-- battery: 1 byte (uint8) — percentage
-- rssi: 1 byte (uint8)
 - first_timestamp: 4 bytes (uint32) — Unix time of the first sample in the series
 - interval: 2 bytes (uint16) — seconds between samples
-- record_count: 1 byte (uint8)
+- record_count: 1 byte (uint8) — number of records
 - records: record_count repetitions of:
     - temperature: 2 bytes (int16) — tenths of degrees Celsius (value = temperature_C × 10)
     - humidity: 2 bytes (int16) — tenths of percent RH (value = humidity_% × 10)
@@ -188,10 +181,8 @@ Payload:
 Payload: (empty)
 - Often used to indicate an event without additional metrics.
 
-#### DataSteps (type=32, version=1)
+#### DataSteps (type=102, version=1)
 Payload:
-- battery: 1 byte (uint8) — percentage
-- rssi: 1 byte (uint8)
 - steps: 4 bytes (int32)
 
 #### DataCustomerId (type=11, version=1)
@@ -208,6 +199,29 @@ Payload:
   - Value: VarString (ASCII)
 Notes:
 - All keys and values are strings on the wire.
+
+#### DataVersions (type=20, version=1)
+Payload:
+- software_version: VarString
+- modem_version: VarString
+
+#### DataNetworkInfo (type=21, version=1)
+Payload:
+- mcc: VarString
+- mnc: VarString
+- rat: VarString
+
+#### DataDeviceStatus (type=22, version=1)
+Payload:
+- battery: 1 byte (uint8) — percentage 0..100
+- rssi: 1 byte (uint8) — received signal strength indicator (implementation-origin scale)
+
+#### DataEnvironment (type=100, version=1)
+Payload:
+- temperature: 2 bytes (uint16) — tenths of degrees Celsius (value = temperature_C × 10)
+- humidity: 2 bytes (uint16) — tenths of percent RH (value = humidity_% × 10)
+- illumination: 2 bytes (uint16) — lux
+- motion: 1 byte (uint8) — 0 or 1
 
 #### <Custom Encoding>
 Below are the steps to define your own encoding.
@@ -293,7 +307,10 @@ Header pack:
 - write_u8(cmd[0])
 - write_u8(cmd[1] or 0)
 - write_u16_be(txn_id)
-- write_bytes(imei_ascii_15)
+- imei_bcd = pack_bcd(imei_digits)  # high nibble = first digit, low nibble = second
+- write_u8(len(imei_bcd))
+- write_bytes(imei_bcd)
+- write_u32_be(timestamp)
 
 VarString pack:
 - write_u8(len(ascii_bytes))
@@ -305,7 +322,7 @@ Ack (A) packet from server:
 ### Interoperability Checklist
 
 - Use big-endian consistently.
-- Keep IMEI exactly 15 ASCII bytes.
+- Encode Device ID/IMEI as packed BCD with a 1-byte length prefix (typically 8 bytes for a 15-digit IMEI).
 - Match Transaction ID in Acks and in responses to server-initiated commands.
 - Respect VarString length limits (≤255).
 - For Telemetry, ensure DataLocation and Data items follow the specified type/version contracts.

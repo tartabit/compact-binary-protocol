@@ -15,13 +15,14 @@ from .encodings import encode_var_string
 from .decoders import PacketDecoder, DataReader
 from .data import (
     DataLocation,
-    DataBasic,
+    DataEnvironment,
     DataMulti,
     DataNull,
     DataSteps,
     DataVersions,
     DataNetworkInfo,
     DataCustomerId,
+    DataDeviceStatus,
     DataKv,
 )
 from .packets import Packet, TelemetryPacket, ConfigPacket
@@ -29,6 +30,6 @@ from .packets import Packet, TelemetryPacket, ConfigPacket
 __all__ = [
     'encode_var_string',
     'PacketDecoder', 'DataReader',
-    'DataLocation', 'DataBasic', 'DataMulti', 'DataNull', 'DataSteps', 'DataVersions', 'DataNetworkInfo', 'DataCustomerId', 'DataKv',
+    'DataLocation', 'DataEnvironment', 'DataMulti', 'DataNull', 'DataSteps', 'DataVersions', 'DataNetworkInfo', 'DataCustomerId', 'DataKv', 'DataDeviceStatus',
     'Packet', 'TelemetryPacket', 'ConfigPacket',
 ]
