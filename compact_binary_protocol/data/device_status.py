@@ -15,6 +15,6 @@ class DataDeviceStatus:
 
     def describe(self):
         return (
-            f"Steps(type={self.sensor_type}, ver={self.sensor_version}, "
+            f"DeviceStatus(type={self.sensor_type}, ver={self.sensor_version}, "
             f"batt={self.battery}%, rssi={self.rssi})"
         )
